@@ -15,13 +15,13 @@
       <div>
         <p class="eyebrow">Capability OS</p>
         <h1>How ready am I for the world?</h1>
-        <p class="subcopy">Track capability, transfer, environment, and time — not just distance.</p>
+        <p class="subcopy">Track capability, transfer, environment, purpose, and time — not just distance.</p>
       </div>
       <button id="themeToggle" class="icon-button" aria-label="Toggle theme">◐</button>
     </header>
 
     <section class="mode-card">
-      <div class="segmented" role="tablist" aria-label="Movement environment">
+      <div class="segmented" role="tablist" aria-label="Movement mode">
         <button class="mode-btn active" data-mode="dryland">Dryland</button>
         <button class="mode-btn" data-mode="wetland">Wetland</button>
         <button class="mode-btn" data-mode="amphibious">Amphibious</button>
@@ -55,7 +55,20 @@
         <p class="eyebrow">World readiness</p>
         <h2><span id="scoreValue">0</span>/100</h2>
       </div>
-      <p id="modeSummary">Select capabilities, environment level, and quality signals to build today's profile.</p>
+      <p id="modeSummary">Select only what was meaningfully present. Unscored dials stay blank.</p>
+    </section>
+
+    <section class="panel">
+      <div class="section-title">
+        <h2>Session purpose</h2>
+        <span id="purposeLabel">Train</span>
+      </div>
+      <div class="purpose-grid" role="radiogroup" aria-label="Session purpose">
+        <button class="purpose-btn active" data-purpose="train">Train</button>
+        <button class="purpose-btn" data-purpose="explore">Explore</button>
+        <button class="purpose-btn" data-purpose="recover">Recover</button>
+        <button class="purpose-btn" data-purpose="test">Test</button>
+      </div>
     </section>
 
     <section class="panel">
@@ -72,20 +85,21 @@
 
     <section class="panel">
       <div class="section-title">
-        <h2>Capabilities</h2>
+        <h2>Movement exposure</h2>
         <span id="capabilityCount">0 selected</span>
       </div>
+      <p class="microcopy">Select only movements meaningfully trained, tested, or exposed to a demanding context.</p>
       <div id="capabilityGrid" class="chip-grid"></div>
       <div class="transfer-box">
         <span>Transfer score</span>
-        <strong id="transferValue">0/5</strong>
+        <strong id="transferValue">—</strong>
       </div>
     </section>
 
     <section class="panel">
       <div class="section-title">
         <h2>Session axes</h2>
-        <span>0–10</span>
+        <span>salience-based</span>
       </div>
       <div id="axisList" class="quality-list"></div>
     </section>
@@ -93,7 +107,7 @@
     <section class="panel">
       <div class="section-title">
         <h2>Quality dials</h2>
-        <span>0–10</span>
+        <span>salience-based</span>
       </div>
       <div id="qualityList" class="quality-list"></div>
     </section>
@@ -104,6 +118,7 @@
         <span id="dateStamp"></span>
       </div>
       <textarea id="sessionNote" placeholder="What transferred? What did the environment teach you? What kind of exhaustion did you feel?"></textarea>
+      <div id="saveSummary" class="save-summary" hidden></div>
       <div class="actions">
         <button id="saveBtn" class="primary-btn">Save session</button>
         <button id="exportBtn" class="secondary-btn">Export CSV</button>
@@ -113,9 +128,17 @@
 
     <section class="panel history-panel">
       <div class="section-title">
-        <h2>Recent sessions</h2>
+        <h2>Daily ledger</h2>
         <button id="clearHistory" class="text-btn">Clear</button>
       </div>
+      <div class="date-nav">
+        <button id="prevDay" class="nav-btn" aria-label="Previous day">‹</button>
+        <button id="datePickerBtn" class="date-btn"><span id="ledgerDateLabel">Today</span></button>
+        <input id="ledgerDate" type="date" />
+        <button id="nextDay" class="nav-btn" aria-label="Next day">›</button>
+        <button id="todayBtn" class="today-btn">Today</button>
+      </div>
+      <div id="ledgerTotals" class="ledger-totals"></div>
       <div id="historyList" class="history-list"></div>
     </section>
   </main>
