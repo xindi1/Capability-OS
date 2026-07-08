@@ -22,8 +22,8 @@
 
     <section class="mode-card">
       <div class="segmented" role="tablist" aria-label="Movement mode">
-        <button class="mode-btn active" data-mode="dryland">Dryland</button>
-        <button class="mode-btn" data-mode="wetland">Wetland</button>
+        <button class="mode-btn active" data-mode="dryland">Land</button>
+        <button class="mode-btn" data-mode="wetland">Water</button>
         <button class="mode-btn" data-mode="amphibious">Amphibious</button>
       </div>
 
@@ -44,8 +44,8 @@
 
       <div class="today-strip" aria-label="Today totals">
         <div><strong id="todayTotal">0m</strong><span>Total</span></div>
-        <div><strong id="drylandTotal">0m</strong><span>Dry</span></div>
-        <div><strong id="wetlandTotal">0m</strong><span>Wet</span></div>
+        <div><strong id="drylandTotal">0m</strong><span>Land</span></div>
+        <div><strong id="wetlandTotal">0m</strong><span>Water</span></div>
         <div><strong id="amphibiousTotal">0m</strong><span>Amph</span></div>
       </div>
     </section>
@@ -121,7 +121,7 @@
       <div id="saveSummary" class="save-summary" hidden></div>
       <div class="actions">
         <button id="saveBtn" class="primary-btn">Save session</button>
-        <button id="exportBtn" class="secondary-btn">Export CSV</button>
+        <button id="exportBtn" class="secondary-btn">Export CSV</button><button id="exportJsonBtn" class="secondary-btn">Export JSON</button><label class="secondary-btn import-label">Import JSON<input id="importJsonFile" type="file" accept="application/json" hidden /></label>
         <button id="resetBtn" class="ghost-btn">Reset</button>
       </div>
     </section>

@@ -7,7 +7,7 @@ const MODES = {
     ]
   },
   wetland: {
-    summary: "Build aquatic readiness through strokes, calm, orientation, and environmental adaptation.",
+    summary: "Build water readiness through strokes, calm, orientation, and environmental adaptation.",
     exposures: [
       ["Freestyle",4], ["Breaststroke",4], ["Backstroke",3], ["Sidestroke",4], ["Tread",5], ["Float",5],
       ["Sighting",5], ["Direction change",4], ["Entry/exit",5], ["Low visibility",4], ["Temperature",4], ["Recovery",5]
@@ -28,6 +28,9 @@ const ENVIRONMENTS = {
   dynamic: { label: "Dynamic", multiplier: 1.28, examples: "ocean · lake · trail" }
 };
 const PURPOSES = { train: "Train", explore: "Explore", recover: "Recover", test: "Test" };
+const MODE_LABELS = { dryland: 'Land', wetland: 'Water', amphibious: 'Amphibious' };
+function modeLabel(mode){ return MODE_LABELS[mode] || capitalize(mode); }
+
 const AXES = ["Challenge", "Novelty", "Transfer", "Enjoyment"];
 const QUALITY = ["Efficiency", "Awareness", "Adaptability", "Control", "Calmness", "Recovery"];
 const $ = id => document.getElementById(id);
@@ -41,7 +44,8 @@ const state = {
   selected: new Set(),
   axes: Object.fromEntries(AXES.map(q => [q, null])),
   quality: Object.fromEntries(QUALITY.map(q => [q, null])),
-  ledgerDay: localDayKey()
+  ledgerDay: localDayKey(),
+  editingSessionId: null
 };
 
 function init() {
@@ -58,6 +62,8 @@ function init() {
   $("themeToggle").onclick = toggleTheme;
   $("saveBtn").onclick = saveSession;
   $("exportBtn").onclick = exportCSV;
+  $("exportJsonBtn").onclick = exportJSON;
+  $("importJsonFile").onchange = importJSON;
   $("resetBtn").onclick = resetSession;
   $("clearHistory").onclick = clearHistory;
   $("prevDay").onclick = () => moveLedgerDay(-1);
@@ -191,8 +197,11 @@ function saveSession() {
   const sessions = getSessions();
   const duration = getDurationMinutes();
   const transferAvg = averageTransfer();
+  const existing = state.editingSessionId ? sessions.find(s => s.id === state.editingSessionId) : null;
   const session = {
-    date: new Date().toISOString(),
+    id: existing?.id || makeSessionId(),
+    date: existing?.date || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     dayKey: localDayKey(),
     mode: state.mode,
     environment: state.environment,
@@ -208,8 +217,11 @@ function saveSession() {
     quality: {...state.quality},
     note: $("sessionNote").value.trim()
   };
-  sessions.unshift(session);
-  localStorage.setItem("capabilitySessions", JSON.stringify(sessions.slice(0, 300)));
+  const next = sessions.filter(s => s.id !== session.id);
+  next.unshift(session);
+  localStorage.setItem("capabilitySessions", JSON.stringify(next.slice(0, 300)));
+  state.editingSessionId = null;
+  $("saveBtn").textContent = "Save session";
   state.ledgerDay = session.dayKey;
   renderHistory();
   renderTodayTotals();
@@ -218,7 +230,7 @@ function saveSession() {
 function showSaveSummary(s) {
   const scored = [...summarizeScores(s.axes), ...summarizeScores(s.quality)].slice(0, 4).join(" · ");
   const env = ENVIRONMENTS[s.environment]?.label || capitalize(s.environment);
-  const summary = `${formatMinutes(s.duration)} · ${capitalize(s.mode)} · ${env} · ${PURPOSES[s.purpose] || capitalize(s.purpose)}${scored ? " · " + scored : ""}`;
+  const summary = `${formatMinutes(s.duration)} · ${modeLabel(s.mode)} · ${env} · ${PURPOSES[s.purpose] || capitalize(s.purpose)}${scored ? " · " + scored : ""}`;
   $("saveSummary").textContent = summary;
   $("saveSummary").hidden = false;
 }
@@ -234,6 +246,8 @@ function resetSession() {
   $("endTime").value = state.endTime;
   $("sessionNote").value = "";
   $("saveSummary").hidden = true;
+  state.editingSessionId = null;
+  $("saveBtn").textContent = "Save session";
   document.querySelectorAll(".ladder-step").forEach(btn => btn.classList.toggle("active", btn.dataset.level === state.environment));
   document.querySelectorAll(".purpose-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.purpose === state.purpose));
   renderAll();
@@ -261,7 +275,9 @@ function renderHistory() {
     const exposures = s.exposures || s.capabilities || [];
     const transfer = s.transferScore !== null && s.transferScore !== undefined ? `Transfer ${Number(s.transferScore).toFixed(1)}/5` : "Transfer —";
     const scoreBits = [...summarizeScores(s.axes || {}), ...summarizeScores(s.quality || {})];
-    item.innerHTML = `<summary><strong>${window} · ${capitalize(s.mode)} · ${env} · ${purpose} · ${formatMinutes(duration)}</strong><p>${exposures.length ? exposures.join(", ") : "No movement exposure selected"}</p></summary><div class="detail"><p>World readiness ${s.score}/100 · ${transfer}</p>${scoreBits.length ? `<div class="pill-row">${scoreBits.map(bit => `<span class="pill">${bit}</span>`).join("")}</div>` : `<p>No scored dials.</p>`}${s.note ? `<p>${escapeHTML(s.note)}</p>` : ""}</div>`;
+    item.innerHTML = `<summary><strong>${window} · ${modeLabel(s.mode)} · ${env} · ${purpose} · ${formatMinutes(duration)}</strong><p>${exposures.length ? exposures.join(", ") : "No movement exposure selected"}</p></summary><div class="detail"><p>World readiness ${s.score}/100 · ${transfer}</p>${scoreBits.length ? `<div class="pill-row">${scoreBits.map(bit => `<span class="pill">${bit}</span>`).join("")}</div>` : `<p>No scored dials.</p>`}${s.note ? `<p>${escapeHTML(s.note)}</p>` : ""}<div class="history-actions"><button type="button" class="secondary-btn small-action" data-edit="${s.id}">Edit</button><button type="button" class="ghost-btn small-action delete-action" data-delete="${s.id}">Delete</button></div></div>`;
+    item.querySelector("[data-edit]").onclick = () => editSession(s.id);
+    item.querySelector("[data-delete]").onclick = () => deleteSession(s.id);
     list.appendChild(item);
   });
 }
@@ -275,7 +291,7 @@ function renderLedgerTotals(daySessions) {
   const totals = { dryland: 0, wetland: 0, amphibious: 0 };
   daySessions.forEach(s => { if (totals[s.mode] !== undefined) totals[s.mode] += Number(s.duration ?? s.time ?? 0); });
   const overall = totals.dryland + totals.wetland + totals.amphibious;
-  $("ledgerTotals").innerHTML = `<div><strong>${formatMinutes(overall)}</strong><span>Total</span></div><div><strong>${formatMinutes(totals.dryland)}</strong><span>Dry</span></div><div><strong>${formatMinutes(totals.wetland)}</strong><span>Wet</span></div><div><strong>${formatMinutes(totals.amphibious)}</strong><span>Amph</span></div>`;
+  $("ledgerTotals").innerHTML = `<div><strong>${formatMinutes(overall)}</strong><span>Total</span></div><div><strong>${formatMinutes(totals.dryland)}</strong><span>Land</span></div><div><strong>${formatMinutes(totals.wetland)}</strong><span>Water</span></div><div><strong>${formatMinutes(totals.amphibious)}</strong><span>Amph</span></div>`;
 }
 function renderTodayTotals() {
   const today = localDayKey();
@@ -295,6 +311,101 @@ function moveLedgerDay(delta) {
   d.setDate(d.getDate() + delta);
   state.ledgerDay = toDayKey(d);
   renderHistory();
+}
+
+
+function makeSessionId() {
+  return `session-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+}
+function ensureSessionIds(sessions) {
+  let changed = false;
+  const next = sessions.map(s => {
+    if (!s.id) { changed = true; return {...s, id: makeSessionId()}; }
+    return s;
+  });
+  if (changed) localStorage.setItem("capabilitySessions", JSON.stringify(next));
+  return next;
+}
+function editSession(id) {
+  const s = getSessions().find(x => x.id === id);
+  if (!s) return;
+  state.editingSessionId = id;
+  state.mode = s.mode || "dryland";
+  state.environment = s.environment || "controlled";
+  state.purpose = s.purpose || "train";
+  state.startTime = s.startTime || defaultTime(-60);
+  state.endTime = s.endTime || defaultTime(0);
+  state.selected = new Set(s.exposures || s.capabilities || []);
+  state.axes = {...Object.fromEntries(AXES.map(q => [q, null])), ...(s.axes || {})};
+  state.quality = {...Object.fromEntries(QUALITY.map(q => [q, null])), ...(s.quality || {})};
+  $("startTime").value = state.startTime;
+  $("endTime").value = state.endTime;
+  $("sessionNote").value = s.note || "";
+  $("saveBtn").textContent = "Update session";
+  document.querySelectorAll(".mode-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.mode === state.mode));
+  document.querySelectorAll(".ladder-step").forEach(btn => btn.classList.toggle("active", btn.dataset.level === state.environment));
+  document.querySelectorAll(".purpose-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.purpose === state.purpose));
+  renderAll();
+  $("saveSummary").textContent = "Editing saved session. Make changes, then tap Update session.";
+  $("saveSummary").hidden = false;
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+function deleteSession(id) {
+  if (!confirm("Delete this saved session?")) return;
+  const next = getSessions().filter(s => s.id !== id);
+  localStorage.setItem("capabilitySessions", JSON.stringify(next));
+  if (state.editingSessionId === id) resetSession();
+  renderHistory();
+  renderTodayTotals();
+}
+
+
+function exportJSON() {
+  const payload = {
+    app: "Capability OS",
+    version: "1.2",
+    exportedAt: new Date().toISOString(),
+    sessions: getSessions()
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "capability-os-backup.json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importJSON(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      const incoming = Array.isArray(data) ? data : (data.sessions || data.capabilitySessions || []);
+      if (!Array.isArray(incoming)) throw new Error("No sessions array found.");
+      const current = getSessions();
+      const byId = new Map(current.map(s => [s.id || `${s.date}-${s.startTime || ""}`, s]));
+      incoming.forEach(raw => {
+        const session = {...raw};
+        if (!session.id) session.id = makeSessionId();
+        byId.set(session.id, session);
+      });
+      const merged = Array.from(byId.values())
+        .sort((a,b) => new Date(b.date || 0) - new Date(a.date || 0))
+        .slice(0, 300);
+      localStorage.setItem("capabilitySessions", JSON.stringify(merged));
+      renderHistory();
+      renderTodayTotals();
+      alert(`Imported ${incoming.length} session(s).`);
+    } catch (err) {
+      alert("Could not import this JSON file.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+  reader.readAsText(file);
 }
 
 function exportCSV() {
@@ -332,7 +443,7 @@ function clearHistory() {
   renderTodayTotals();
 }
 
-function getSessions() { return JSON.parse(localStorage.getItem("capabilitySessions") || "[]"); }
+function getSessions() { return ensureSessionIds(JSON.parse(localStorage.getItem("capabilitySessions") || "[]")); }
 function getDurationMinutes() {
   const start = timeToMinutes(state.startTime);
   const end = timeToMinutes(state.endTime);
