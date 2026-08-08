@@ -1,8 +1,10 @@
 {
   "name": "Capability OS",
   "short_name": "CapabilityOS",
+  "id": "capability-os-mobile",
   "start_url": ".",
   "display": "standalone",
+  "description": "Low-friction Land, Water, and Amphibious capability session capture.",
   "background_color": "#0c1113",
   "theme_color": "#101418",
   "icons": [

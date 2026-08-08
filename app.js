@@ -33,6 +33,10 @@ function modeLabel(mode){ return MODE_LABELS[mode] || capitalize(mode); }
 
 const AXES = ["Challenge", "Novelty", "Transfer", "Enjoyment"];
 const QUALITY = ["Efficiency", "Awareness", "Adaptability", "Control", "Calmness", "Recovery"];
+const CANON = window.CapabilityCanonical;
+const APP_VERSION = "1.3.0";
+const STORAGE_KEY = "capabilitySessions";
+const STORAGE_WARNING_COUNT = 300;
 const $ = id => document.getElementById(id);
 
 const state = {
@@ -41,6 +45,7 @@ const state = {
   purpose: "train",
   startTime: defaultTime(-60),
   endTime: defaultTime(0),
+  sessionDate: localDayKey(),
   selected: new Set(),
   axes: Object.fromEntries(AXES.map(q => [q, null])),
   quality: Object.fromEntries(QUALITY.map(q => [q, null])),
@@ -57,6 +62,8 @@ function init() {
   document.querySelectorAll(".purpose-btn").forEach(btn => btn.addEventListener("click", () => setPurpose(btn.dataset.purpose)));
   $("startTime").value = state.startTime;
   $("endTime").value = state.endTime;
+  $("sessionDate").value = state.sessionDate;
+  $("sessionDate").onchange = () => { state.sessionDate = $("sessionDate").value || localDayKey(); };
   $("startTime").onchange = updateTimeWindow;
   $("endTime").onchange = updateTimeWindow;
   $("themeToggle").onclick = toggleTheme;
@@ -198,17 +205,18 @@ function saveSession() {
   const duration = getDurationMinutes();
   const transferAvg = averageTransfer();
   const existing = state.editingSessionId ? sessions.find(s => s.id === state.editingSessionId) : null;
-  const session = {
-    id: existing?.id || makeSessionId(),
-    date: existing?.date || new Date().toISOString(),
+  const session = CANON.toLegacySession({
+    id: existing?.id || CANON.uuid(),
+    createdAt: existing?.createdAt || existing?.date || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    dayKey: localDayKey(),
+    localDate: state.sessionDate,
+    timeZoneOffsetMinutes: new Date().getTimezoneOffset(),
     mode: state.mode,
     environment: state.environment,
     purpose: state.purpose,
     startTime: state.startTime,
     endTime: state.endTime,
-    duration,
+    durationMinutes: duration,
     score: calculateScore(),
     transferScore: transferAvg === null ? null : Number(transferAvg.toFixed(2)),
     exposures: [...state.selected],
@@ -216,10 +224,10 @@ function saveSession() {
     axes: {...state.axes},
     quality: {...state.quality},
     note: $("sessionNote").value.trim()
-  };
+  });
   const next = sessions.filter(s => s.id !== session.id);
   next.unshift(session);
-  localStorage.setItem("capabilitySessions", JSON.stringify(next.slice(0, 300)));
+  if (!storeSessions(next)) return;
   state.editingSessionId = null;
   $("saveBtn").textContent = "Save session";
   state.ledgerDay = session.dayKey;
@@ -242,8 +250,10 @@ function resetSession() {
   state.purpose = "train";
   state.startTime = defaultTime(-60);
   state.endTime = defaultTime(0);
+  state.sessionDate = localDayKey();
   $("startTime").value = state.startTime;
   $("endTime").value = state.endTime;
+  $("sessionDate").value = state.sessionDate;
   $("sessionNote").value = "";
   $("saveSummary").hidden = true;
   state.editingSessionId = null;
@@ -314,16 +324,13 @@ function moveLedgerDay(delta) {
 }
 
 
-function makeSessionId() {
-  return `session-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-}
 function ensureSessionIds(sessions) {
   let changed = false;
   const next = sessions.map(s => {
-    if (!s.id) { changed = true; return {...s, id: makeSessionId()}; }
+    if (!s.id) { changed = true; return CANON.toLegacySession(CANON.normalizeSession(s)); }
     return s;
   });
-  if (changed) localStorage.setItem("capabilitySessions", JSON.stringify(next));
+  if (changed) storeSessions(next, false);
   return next;
 }
 function editSession(id) {
@@ -335,11 +342,13 @@ function editSession(id) {
   state.purpose = s.purpose || "train";
   state.startTime = s.startTime || defaultTime(-60);
   state.endTime = s.endTime || defaultTime(0);
+  state.sessionDate = s.localDate || s.dayKey || isoToLocalDayKey(s.date);
   state.selected = new Set(s.exposures || s.capabilities || []);
   state.axes = {...Object.fromEntries(AXES.map(q => [q, null])), ...(s.axes || {})};
   state.quality = {...Object.fromEntries(QUALITY.map(q => [q, null])), ...(s.quality || {})};
   $("startTime").value = state.startTime;
   $("endTime").value = state.endTime;
+  $("sessionDate").value = state.sessionDate;
   $("sessionNote").value = s.note || "";
   $("saveBtn").textContent = "Update session";
   document.querySelectorAll(".mode-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.mode === state.mode));
@@ -353,7 +362,7 @@ function editSession(id) {
 function deleteSession(id) {
   if (!confirm("Delete this saved session?")) return;
   const next = getSessions().filter(s => s.id !== id);
-  localStorage.setItem("capabilitySessions", JSON.stringify(next));
+  storeSessions(next);
   if (state.editingSessionId === id) resetSession();
   renderHistory();
   renderTodayTotals();
@@ -361,17 +370,16 @@ function deleteSession(id) {
 
 
 function exportJSON() {
-  const payload = {
-    app: "Capability OS",
-    version: "1.2",
-    exportedAt: new Date().toISOString(),
-    sessions: getSessions()
-  };
+  const payload = CANON.makeBackup(getSessions(), APP_VERSION);
+  downloadJSON(payload, `capability-os-backup-${localDayKey()}.json`);
+}
+
+function downloadJSON(payload, filename) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "capability-os-backup.json";
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -383,24 +391,24 @@ function importJSON(event) {
   reader.onload = () => {
     try {
       const data = JSON.parse(reader.result);
-      const incoming = Array.isArray(data) ? data : (data.sessions || data.capabilitySessions || []);
-      if (!Array.isArray(incoming)) throw new Error("No sessions array found.");
+      const parsed = CANON.parseBackup(data);
+      const incoming = parsed.sessions;
       const current = getSessions();
-      const byId = new Map(current.map(s => [s.id || `${s.date}-${s.startTime || ""}`, s]));
-      incoming.forEach(raw => {
-        const session = {...raw};
-        if (!session.id) session.id = makeSessionId();
-        byId.set(session.id, session);
-      });
-      const merged = Array.from(byId.values())
-        .sort((a,b) => new Date(b.date || 0) - new Date(a.date || 0))
-        .slice(0, 300);
-      localStorage.setItem("capabilitySessions", JSON.stringify(merged));
+      const choice = prompt(`Validated ${incoming.length} session(s) from schema ${parsed.sourceVersion}. Type MERGE, REPLACE, or CANCEL.`, "MERGE");
+      if (!choice || choice.toUpperCase() === "CANCEL") return;
+      const operation = choice.toUpperCase();
+      if (!new Set(["MERGE", "REPLACE"]).has(operation)) throw new Error("Import cancelled: unknown operation.");
+      if (current.length) downloadJSON(CANON.makeBackup(current, APP_VERSION), `capability-os-pre-import-${localDayKey()}.json`);
+      const result = operation === "REPLACE"
+        ? {sessions: incoming, stats: {added: incoming.length, updated: 0, unchanged: 0}}
+        : CANON.mergeSessions(current, incoming);
+      const stored = result.sessions.map(CANON.toLegacySession);
+      if (!storeSessions(stored)) throw new Error("Import was not stored; the existing ledger is unchanged.");
       renderHistory();
       renderTodayTotals();
-      alert(`Imported ${incoming.length} session(s).`);
+      alert(`Import complete: ${result.stats.added} added, ${result.stats.updated} updated, ${result.stats.unchanged} unchanged. ${stored.length} total.`);
     } catch (err) {
-      alert("Could not import this JSON file.");
+      alert(`Could not import this JSON file. ${err.message}`);
     } finally {
       event.target.value = "";
     }
@@ -443,7 +451,22 @@ function clearHistory() {
   renderTodayTotals();
 }
 
-function getSessions() { return ensureSessionIds(JSON.parse(localStorage.getItem("capabilitySessions") || "[]")); }
+function storeSessions(sessions, announceCap = true) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+    if (announceCap && sessions.length > STORAGE_WARNING_COUNT) {
+      alert(`Ledger contains ${sessions.length} sessions. No records were discarded. Export a JSON backup regularly; browser storage is finite.`);
+    }
+    return true;
+  } catch (error) {
+    alert("Browser storage is full. No records were deleted or overwritten. Export a JSON backup before making further changes.");
+    return false;
+  }
+}
+function getSessions() {
+  try { return ensureSessionIds(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]")); }
+  catch (error) { alert("Stored session data could not be read. Export or copy browser storage before clearing anything."); return []; }
+}
 function getDurationMinutes() {
   const start = timeToMinutes(state.startTime);
   const end = timeToMinutes(state.endTime);

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://capability-os.local/schema/backup-1.0.0.json",
+  "title": "Capability OS canonical backup",
+  "type": "object",
+  "required": ["documentType", "schema", "export", "sessions"],
+  "additionalProperties": false,
+  "properties": {
+    "documentType": { "const": "capability-os.backup" },
+    "schema": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "const": "capability-os" },
+        "version": { "const": "1.0.0" }
+      }
+    },
+    "export": {
+      "type": "object",
+      "required": ["id", "exportedAt", "producer"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "exportedAt": { "type": "string", "format": "date-time" },
+        "producer": {
+          "type": "object",
+          "required": ["app", "version"],
+          "additionalProperties": false,
+          "properties": {
+            "app": { "type": "string" },
+            "version": { "type": "string" }
+          }
+        }
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/session" }
+    }
+  },
+  "$defs": {
+    "nullableScore": { "type": ["number", "null"], "minimum": 0, "maximum": 10 },
+    "session": {
+      "type": "object",
+      "required": ["id", "localDate", "startTime", "endTime", "timeZoneOffsetMinutes", "durationMinutes", "mode", "environment", "purpose", "exposures", "axes", "quality", "score", "transferScore", "note", "createdAt", "updatedAt"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "localDate": { "type": "string", "format": "date" },
+        "startTime": { "type": ["string", "null"], "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+        "endTime": { "type": ["string", "null"], "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+        "timeZoneOffsetMinutes": { "type": ["integer", "null"], "minimum": -840, "maximum": 840 },
+        "durationMinutes": { "type": "integer", "minimum": 0, "maximum": 1440 },
+        "mode": { "enum": ["dryland", "wetland", "amphibious"] },
+        "environment": { "enum": ["controlled", "variable", "dynamic"] },
+        "purpose": { "enum": ["train", "explore", "recover", "test"] },
+        "exposures": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "axes": { "$ref": "#/$defs/axes" },
+        "quality": { "$ref": "#/$defs/quality" },
+        "score": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+        "transferScore": { "type": ["number", "null"], "minimum": 0, "maximum": 5 },
+        "note": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "axes": {
+      "type": "object", "additionalProperties": false,
+      "required": ["Challenge", "Novelty", "Transfer", "Enjoyment"],
+      "properties": { "Challenge": { "$ref": "#/$defs/nullableScore" }, "Novelty": { "$ref": "#/$defs/nullableScore" }, "Transfer": { "$ref": "#/$defs/nullableScore" }, "Enjoyment": { "$ref": "#/$defs/nullableScore" } }
+    },
+    "quality": {
+      "type": "object", "additionalProperties": false,
+      "required": ["Efficiency", "Awareness", "Adaptability", "Control", "Calmness", "Recovery"],
+      "properties": { "Efficiency": { "$ref": "#/$defs/nullableScore" }, "Awareness": { "$ref": "#/$defs/nullableScore" }, "Adaptability": { "$ref": "#/$defs/nullableScore" }, "Control": { "$ref": "#/$defs/nullableScore" }, "Calmness": { "$ref": "#/$defs/nullableScore" }, "Recovery": { "$ref": "#/$defs/nullableScore" } }
+    }
+  }
+}

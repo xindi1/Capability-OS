@@ -105,6 +105,8 @@ h2 { margin-bottom: 0; }
   align-items: stretch;
   width: 100%;
 }
+.session-date-field { grid-column: 1 / -1; min-height: 64px; }
+.session-date-field input { width: auto; }
 .time-field, .time-display {
   min-height: 76px;
   border-radius: 22px;
